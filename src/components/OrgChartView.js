@@ -6,6 +6,19 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState("");
+  // Template selection state: keep only the requested templates
+  const templates = [
+    { key: 'ana', label: 'Ana' },
+    { key: 'olivia', label: 'Olivia' },
+    { key: 'belinda', label: 'Belinda' },
+    { key: 'rony', label: 'Rony' },
+    { key: 'mery', label: 'Mery' },
+    { key: 'polina', label: 'Polina' },
+    { key: 'diva', label: 'Diva' },
+    { key: 'isla', label: 'Isla' }
+  ];
+
+  const [selectedTemplate, setSelectedTemplate] = useState(templates[0].key);
   // Helper: color nodes based on Status column values
   const colorNodes = (chartObj, rows) => {
     if (!chartObj || !rows || !Array.isArray(rows)) return;
@@ -114,7 +127,7 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
         img_0: "img"
       },
   scaleInitial: OrgChart.match.boundary,
-  template: "ana",
+  template: selectedTemplate,
   layout: OrgChart.mixed,
   // Disable the library's built-in details/edit UI on node click so
   // we don't get the right-side details panel. We use our own
@@ -168,11 +181,12 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
     }
   // colorNodes helper is defined at component scope; call it after creation
 
-    chartInstanceRef.current = chart;
+  chartInstanceRef.current = chart;
   // color initial nodes (delay to allow internal rendering)
   setTimeout(() => { colorNodes(chart, data); addStatusBadges(chart, data); }, 300);
     return () => chart.destroy();
-  }, [data, originalData, setSelectedEmployee]);
+  }, [data, originalData, setSelectedEmployee, selectedTemplate]);
+  // note: selectedTemplate is included in the effect deps so changing it will recreate the chart
   const handleRefresh = () => {
     setDisplayData(originalData);
     if (chartInstanceRef.current) {
@@ -248,9 +262,12 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
           onRefresh={handleRefresh}
           onBack={handleBack}
           onPrint={handlePrint}
+          templates={templates}
+          onSelectTemplate={setSelectedTemplate}
+          selectedTemplate={selectedTemplate}
         />
         <div className="orgchart-container">
-          <div className="chart-container" id="orgChart" ref={chartContainerRef}></div>
+          <div className={`chart-container template-${selectedTemplate}`} id="orgChart" ref={chartContainerRef}></div>
         </div>
       </div>
     </>

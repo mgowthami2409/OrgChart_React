@@ -29,6 +29,25 @@
   margin-bottom: 2px;
 }
 
+.template-controls {
+  display: flex;
+  gap: 6px;
+  margin-right: 8px;
+}
+.template-btn {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: none;
+  background: #6aa6d6;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+.template-btn.active {
+  background: #1a75b7;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
 .orgchart-view .top-bar input {
   padding: 3px 6px;           /* compact input */
   border-radius: 4px;
@@ -169,4 +188,30 @@
   z-index: 9999;
   pointer-events: none; /* ignore clicks */
 }
+
+/* Template-specific tweaks */
+.chart-container.template-ana .orgchart .node .field_0,
+.chart-container.template-ana .orgchart .node .field_1 {
+  fill: #000 !important; /* ensure black text for Ana */
+}
+
+/* Mery: larger, crisper black text */
+.chart-container.template-mery .orgchart .node .field_0 {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  fill: #000 !important;
+  -webkit-font-smoothing: antialiased !important;
+  text-rendering: geometricPrecision !important;
+}
+.chart-container.template-mery .orgchart .node .field_1 {
+  font-size: 16px !important;
+  fill: #000 !important;
+}
+
+/* Isla: ensure node border is black if the template supports border */
+.chart-container.template-isla .orgchart .node {
+  box-shadow: none !important;
+  border: 2px solid #000 !important;
+}
+
 

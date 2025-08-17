@@ -1,8 +1,21 @@
 
 import React from "react";
-function Controls({ searchQuery, setSearchQuery, onRefresh, onBack, onPrint }) {
+function Controls({ searchQuery, setSearchQuery, onRefresh, onBack, onPrint, templates = [], onSelectTemplate, selectedTemplate }) {
    return (
       <div className="top-bar">    {/* was controls */}
+         {/* Template selection buttons */}
+         {templates && templates.length > 0 && (
+            <div className="template-controls">
+               {templates.map(t => (
+                  <button
+                     key={t.key}
+                     className={`template-btn ${selectedTemplate === t.key ? 'active' : ''}`}
+                     onClick={() => onSelectTemplate && onSelectTemplate(t.key)}
+                     title={`Use ${t.label} template`}
+                  >{t.label}</button>
+               ))}
+            </div>
+         )}
          <input
             type="text"
             value={searchQuery}
