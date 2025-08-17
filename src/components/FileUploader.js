@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
-function FileUploader({ setOriginalData, setDisplayData }) {
+function FileUploader({ setOriginalData, setDisplayData, setHeaders, setDepartment }) {
   const fileInputRef = useRef(null);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
@@ -54,8 +54,11 @@ function FileUploader({ setOriginalData, setDisplayData }) {
       const workbook = XLSX.read(data, { type: "array" });
       const sheetName = workbook.SheetNames[0];
       const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
-      setOriginalData(jsonData);
-      setDisplayData(jsonData);
+  setOriginalData(jsonData);
+  setDisplayData(jsonData);
+  // extract headers and pass them up so caller can present field selectors
+  const headerRow = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 })[0] || [];
+  if (setHeaders) setHeaders(headerRow.map(h => String(h)));
       setError("");
       setSubmitted(true); // ✅ switch to new UI
     };
@@ -125,6 +128,9 @@ function FileUploader({ setOriginalData, setDisplayData }) {
         <button onClick={handleChooseFile}>Choose File</button>
         <button onClick={handleSubmit}>Submit</button>
         <button onClick={handleClear}>Clear</button>
+        <br />
+        <label style={{ marginTop: 8 }}>Department (used in print):</label>
+        <input type="text" onChange={e => setDepartment && setDepartment(e.target.value)} style={{ marginLeft: 6 }} />
         <br />
         <span className={`file-name ${error ? "error" : fileName ? "success" : ""}`}>
           {error ? error : (fileName ? fileName : "No file chosen")}

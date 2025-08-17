@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import OrgChart from "@balkangraph/orgchart.js";
 import Controls from "./Controls";
 import "./OrgChartView.css";
-function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee, onBackToUpload }) {
+function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee, onBackToUpload, headers = [], selectedFields = { nameField: 'First_Name', titleField: 'Designation' }, setSelectedFields, department = '' }) {
   const chartContainerRef = useRef(null);
   const chartInstanceRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,6 +19,10 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
   ];
 
   const [selectedTemplate, setSelectedTemplate] = useState(templates[0].key);
+  // local fallback for selected fields if parent doesn't provide setter
+  const [localSelected, setLocalSelected] = useState({ nameField: 'First_Name', titleField: 'Designation' });
+  const [localDepartment, setLocalDepartment] = useState(department || '');
+  const effectiveSelected = (selectedFields && setSelectedFields) ? selectedFields : localSelected;
   // Helper: color nodes based on Status column values
   const colorNodes = (chartObj, rows) => {
     if (!chartObj || !rows || !Array.isArray(rows)) return;
@@ -111,12 +115,44 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
     }
   };
   useEffect(() => {
+    // derive department from uploaded data if not explicitly provided
+    if (!department) {
+      try {
+        const possibleKeys = ['Department', 'department', 'Dept', 'dept', 'Department Name', 'DepartmentName'];
+        let found = '';
+        if (Array.isArray(originalData) && originalData.length > 0) {
+          // try headers first
+          const headerKey = (headers || []).find(h => possibleKeys.includes(h));
+          if (headerKey) {
+            // take the most common non-empty value
+            const counts = {};
+            for (const r of originalData) {
+              const v = (r[headerKey] || '').toString().trim();
+              if (!v) continue;
+              counts[v] = (counts[v] || 0) + 1;
+            }
+            const entries = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+            if (entries.length) found = entries[0][0];
+          } else {
+            // fallback: scan rows for any of the possible keys
+            for (const key of possibleKeys) {
+              const v = originalData[0][key] || '';
+              if (v && v.toString().trim()) { found = v.toString().trim(); break; }
+            }
+          }
+        }
+        if (found) setLocalDepartment(found);
+      } catch(e) {}
+    } else {
+      setLocalDepartment(department);
+    }
+
     if (!data || data.length === 0 || !chartContainerRef.current) return;
     const nodes = data.map(row => ({
       id: row.ID,
       pid: row["Parent ID"] || null,
-      name: row.First_Name,
-      title: row.Designation,
+      name: row[effectiveSelected.nameField] || '',
+      title: row[effectiveSelected.titleField] || '',
       img: row.Photo
     }));
     const chart = new OrgChart(chartContainerRef.current, {
@@ -185,7 +221,7 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
   // color initial nodes (delay to allow internal rendering)
   setTimeout(() => { colorNodes(chart, data); addStatusBadges(chart, data); }, 300);
     return () => chart.destroy();
-  }, [data, originalData, setSelectedEmployee, selectedTemplate]);
+  }, [data, originalData, setSelectedEmployee, selectedTemplate, effectiveSelected.nameField, effectiveSelected.titleField, department, headers]);
   // note: selectedTemplate is included in the effect deps so changing it will recreate the chart
   const handleRefresh = () => {
     setDisplayData(originalData);
@@ -267,7 +303,19 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
           selectedTemplate={selectedTemplate}
         />
         <div className="orgchart-container">
+          <div className="field-selectors" style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 8px' }}>
+            <label>Show Name from:</label>
+            <select value={effectiveSelected.nameField} onChange={e => (setSelectedFields ? setSelectedFields({ ...effectiveSelected, nameField: e.target.value }) : setLocalSelected({ ...effectiveSelected, nameField: e.target.value }))}>
+              {(headers || []).map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <label>Show Title from:</label>
+            <select value={effectiveSelected.titleField} onChange={e => (setSelectedFields ? setSelectedFields({ ...effectiveSelected, titleField: e.target.value }) : setLocalSelected({ ...effectiveSelected, titleField: e.target.value }))}>
+              {(headers || []).map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+          </div>
           <div className={`chart-container template-${selectedTemplate}`} id="orgChart" ref={chartContainerRef}></div>
+          {/* print-only department label (rendered only in print via CSS) */}
+          <div className="print-department">{localDepartment ? `Department name: ${localDepartment}` : ''}</div>
         </div>
       </div>
     </>
