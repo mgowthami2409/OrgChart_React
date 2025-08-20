@@ -24,9 +24,22 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
 
   const [selectedTemplate, setSelectedTemplate] = useState(templates[0].key);
   // local fallback for selected fields if parent doesn't provide setter
-  const [localSelected, setLocalSelected] = useState({ nameField: 'First_Name', titleField: 'Designation' });
+  const [localSelected, setLocalSelected] = useState({ nameField: 'First_Name', titleField: 'Designation', extras: [] });
   const [localDepartment, setLocalDepartment] = useState(department || '');
-  const effectiveSelected = (selectedFields && setSelectedFields) ? selectedFields : localSelected;
+  const effectiveSelected = (selectedFields && setSelectedFields) ? ({ ...selectedFields, extras: selectedFields.extras || [] }) : localSelected;
+  // map a data row to a chart node object using only name and up to 2 extras for title
+  const mapRowToNode = (row) => {
+    const nameKey = effectiveSelected.nameField || 'First_Name';
+    const extras = Array.isArray(effectiveSelected.extras) ? effectiveSelected.extras.slice(0,2) : [];
+    const extraParts = extras.map(k => row[k] || '').filter(Boolean);
+    return {
+      id: row.ID,
+      pid: row["Parent ID"] || null,
+      name: row[nameKey] || '',
+      title: extraParts.join(' - '),
+      img: row.Photo
+    };
+  };
   // Helper: color nodes based on Status column values
   const colorNodes = (chartObj, rows) => {
     if (!chartObj || !rows || !Array.isArray(rows)) return;
@@ -151,16 +164,8 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
       setLocalDepartment(department);
     }
 
-    if (!data || data.length === 0 || !chartContainerRef.current) return;
-    const nodes = data.map(row => ({
-      id: row.ID,
-      pid: row["Parent ID"] || null,
-      name: row[effectiveSelected.nameField] || '',
-      title: row[effectiveSelected.titleField] || '',
-      img: row.Photo
-      // img: row.Photo ? `${window.location.origin}/photos/${row.Photo}` : '/placeholder.png'
-
-    }));
+  if (!data || data.length === 0 || !chartContainerRef.current) return;
+  const nodes = data.map(row => mapRowToNode(row));
     const chart = new OrgChart(chartContainerRef.current, {
       nodes,
       nodeBinding: {
@@ -227,7 +232,7 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
   // color initial nodes (delay to allow internal rendering)
   setTimeout(() => { colorNodes(chart, data); addStatusBadges(chart, data); }, 300);
     return () => chart.destroy();
-  }, [data, originalData, setSelectedEmployee, selectedTemplate, effectiveSelected.nameField, effectiveSelected.titleField, department, headers]);
+  }, [data, originalData, setSelectedEmployee, selectedTemplate, effectiveSelected.nameField, effectiveSelected.extras, department, headers, mapRowToNode]);
 
   // const handleExportPDF = async () => {
   //   if (!chartContainerRef.current) return;
@@ -243,27 +248,69 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
   const handleExportImage = async () => {
     if (!chartContainerRef.current) return;
 
-    // preload images with decode
-    const imgs = chartContainerRef.current.querySelectorAll('img');
-    await Promise.all(
-      Array.from(imgs).map(img => {
-        if (img.complete) return img.decode?.().catch(() => {});
-        return new Promise(res => { img.onload = img.onerror = res; });
-      })
-    );
+    // Safely get config nodes
+    const cfgNodes = chartInstanceRef.current && chartInstanceRef.current.config && chartInstanceRef.current.config.nodes ? chartInstanceRef.current.config.nodes : [];
 
-    html2canvas(chartContainerRef.current, {
-      backgroundColor: "#ffffff", // solid background (prevents light export)
-      scale: 2,                   // higher resolution
-      useCORS: true,              // fixes image loading in Netlify
-    })
+    try {
+      // 1) Preload all unique image URLs referenced by nodes (this covers original URLs)
+      const urls = Array.from(new Set(cfgNodes.map(n => n && n.img).filter(Boolean)));
+      await Promise.all(urls.map(u => new Promise(res => {
+        try {
+          const im = new Image();
+          // request anonymous CORS where possible
+          try { im.crossOrigin = 'anonymous'; } catch(e) {}
+          im.onload = () => res();
+          im.onerror = () => res();
+          im.src = u;
+        } catch (e) { res(); }
+      })));
 
+      // 2) Ensure each rendered node element uses the node image.
+      // Some templates render <img>, others use background-image on a div.
+      cfgNodes.forEach(n => {
+        try {
+          let nodeEl = null;
+          if (chartInstanceRef.current && typeof chartInstanceRef.current.getNodeElement === 'function') nodeEl = chartInstanceRef.current.getNodeElement(n.id);
+          if (!nodeEl && chartContainerRef.current) {
+            nodeEl = chartContainerRef.current.querySelector(`[data-id="${n.id}"]`) || chartContainerRef.current.querySelector(`#${n.id}`) || chartContainerRef.current.querySelector(`[data-n-id="${n.id}"]`);
+          }
+          if (!nodeEl) return;
+
+          // 2a) If template includes an <img>, set its src
+          const imgEl = nodeEl.querySelector && nodeEl.querySelector('img');
+          if (imgEl && n.img) {
+            try { imgEl.crossOrigin = 'anonymous'; } catch(e) {}
+            if (imgEl.src !== n.img) imgEl.src = n.img;
+            return;
+          }
+
+          // 2b) Otherwise set background-image on likely photo containers
+          if (n.img) {
+            const photoCandidate = nodeEl.querySelector && (nodeEl.querySelector('.boc-photo') || nodeEl.querySelector('.photo') || nodeEl.querySelector('.node-photo') || nodeEl.querySelector('.boc-node') || nodeEl);
+            try {
+              if (photoCandidate && photoCandidate.style) {
+                photoCandidate.style.backgroundImage = `url("${n.img}")`;
+                photoCandidate.style.backgroundSize = 'cover';
+                photoCandidate.style.backgroundPosition = 'center center';
+              }
+            } catch(e) { }
+          }
+        } catch (e) { /* non-fatal per-node */ }
+      });
+
+    } catch (e) {
+      // non-fatal; continue to attempt export even if image preloading or DOM updates failed
+    }
+
+    // give browser a short moment to apply image updates
+    await new Promise(res => setTimeout(res, 200));
+
+    // Finally render to canvas and download
     const canvas = await html2canvas(chartContainerRef.current, {
       scale: 2,
       backgroundColor: '#ffffff',
       useCORS: true
     });
-    
     const imgData = canvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.href = imgData;
@@ -275,13 +322,7 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
   const handleRefresh = () => {
     setDisplayData(originalData);
     if (chartInstanceRef.current) {
-      chartInstanceRef.current.load(originalData.map(row => ({
-        id: row.ID,
-        pid: row["Parent ID"] || null,
-        name: row.First_Name,
-        title: row.Designation,
-        img: row.Photo
-      })), () => {
+  chartInstanceRef.current.load(originalData.map(row => mapRowToNode(row)), () => {
         colorNodes(chartInstanceRef.current, originalData);
     addStatusBadges(chartInstanceRef.current, originalData);
     chartInstanceRef.current.fit();
@@ -297,13 +338,7 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
     setSearchQuery(query);
     if (!query) {
       // reload full chart
-      chartInstanceRef.current.load(originalData.map(row => ({
-        id: row.ID,
-        pid: row["Parent ID"] || null,
-        name: row.First_Name,
-        title: row.Designation,
-        img: row.Photo
-      })));
+  chartInstanceRef.current.load(originalData.map(row => mapRowToNode(row)));
       chartInstanceRef.current.fit();
       return;
     }
@@ -322,16 +357,30 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
     };
     const subtreeNodes = [root, ...collectSubtree(root.ID)];
     chartInstanceRef.current.load(subtreeNodes.map(row => ({
-      id: row.ID,
-      pid: row["Parent ID"] || null,
-      name: row.First_Name,
-      title: row.Designation,
-      img: row.Photo
+  ...mapRowToNode(row)
     })), () => {
   colorNodes(chartInstanceRef.current, subtreeNodes);
   addStatusBadges(chartInstanceRef.current, subtreeNodes);
   chartInstanceRef.current.fit();
     });
+  };
+
+  // Toggle an extra field checkbox (limit to 2 selected extras)
+  const toggleExtra = (field) => {
+    try {
+      const curr = Array.isArray(effectiveSelected.extras) ? [...effectiveSelected.extras] : [];
+      let next = [];
+      if (curr.includes(field)) {
+        next = curr.filter(f => f !== field);
+      } else {
+        if (curr.length >= 2) return; // silently ignore beyond 2
+        next = [...curr, field];
+      }
+      const newVal = setSelectedFields ? ({ ...effectiveSelected, extras: next }) : ({ ...localSelected, extras: next });
+      if (setSelectedFields) setSelectedFields(newVal); else setLocalSelected(newVal);
+    } catch (e) {
+      // ignore
+    }
   };
   return (
     <>
@@ -355,14 +404,25 @@ function OrgChartView({ data, originalData, setDisplayData, setSelectedEmployee,
         />
         <div className="orgchart-container">
           <div className="field-selectors" style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 8px' }}>
-            <label>Show Name from:</label>
-            <select value={effectiveSelected.nameField} onChange={e => (setSelectedFields ? setSelectedFields({ ...effectiveSelected, nameField: e.target.value }) : setLocalSelected({ ...effectiveSelected, nameField: e.target.value }))}>
-              {(headers || []).map(h => <option key={h} value={h}>{h}</option>)}
-            </select>
-            <label>Show Title from:</label>
-            <select value={effectiveSelected.titleField} onChange={e => (setSelectedFields ? setSelectedFields({ ...effectiveSelected, titleField: e.target.value }) : setLocalSelected({ ...effectiveSelected, titleField: e.target.value }))}>
-              {(headers || []).map(h => <option key={h} value={h}>{h}</option>)}
-            </select>
+            <label style={{ marginRight: 6 }}>Required: Name (Photo upload per node)</label>
+            <span style={{ color: '#666', marginRight: 12 }}>Name is mandatory. You can upload or set Photo for each node in the details popup.</span>
+
+            <label style={{ marginRight: 6 }}>Select up to 2 additional fields to show:</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 120, overflow: 'auto', padding: 6, border: '1px solid #ddd', borderRadius: 4 }}>
+              {/* render headers as checkboxes; exclude Photo/Designation/Name */}
+              {(headers || [])
+                .filter(h => { const key = String(h).toLowerCase(); return key !== 'photo' && key !== 'image' && key !== 'designation' && key !== (effectiveSelected.nameField || 'first_name').toLowerCase(); })
+                .map(h => {
+                  const checked = Array.isArray(effectiveSelected.extras) && effectiveSelected.extras.includes(h);
+                  return (
+                    <label key={h} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleExtra(h)} />
+                      <span>{h}</span>
+                    </label>
+                  );
+                })}
+              <small style={{ color: '#666' }}>You may select up to 2 fields; selections update node titles immediately.</small>
+            </div>
           </div>
           <div className="print-label" ref={exportRef}>
               <div className={`chart-container template-${selectedTemplate}`} id="orgChart" ref={chartContainerRef}></div>

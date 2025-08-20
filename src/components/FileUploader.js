@@ -50,15 +50,28 @@ function FileUploader({ setOriginalData, setDisplayData, setHeaders, setDepartme
 
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const data = new Uint8Array(evt.target.result);
-      const workbook = XLSX.read(data, { type: "array" });
-      const sheetName = workbook.SheetNames[0];
-      const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
-  setOriginalData(jsonData);
-  setDisplayData(jsonData);
-  // extract headers and pass them up so caller can present field selectors
-  const headerRow = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 })[0] || [];
-  if (setHeaders) setHeaders(headerRow.map(h => String(h)));
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+
+      // extract headers and pass them up so caller can present field selectors
+      const headerRow = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 })[0] || [];
+
+      // Validate presence of mandatory field: Name (Photo can be uploaded per-node later)
+      const headersLower = headerRow.map(h => String(h).toLowerCase());
+      const possibleNameKeys = ['first_name','first name','name','full_name','fullname','employee name','employee_name'];
+
+      const hasName = headersLower.some(h => possibleNameKeys.includes(h));
+
+      if (!hasName) {
+        setError('Error: Uploaded file must include a Name column. Photo can be uploaded per node after import.');
+        return;
+      }
+
+      setOriginalData(jsonData);
+      setDisplayData(jsonData);
+      if (setHeaders) setHeaders(headerRow.map(h => String(h)));
       setError("");
       setSubmitted(true); // ✅ switch to new UI
     };

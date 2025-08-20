@@ -326,6 +326,51 @@ input[type="file"] {
   color: red;
 }
 
+/* Photo upload button (top-right of popup) */
+.photo-plus {
+  position: absolute;
+  top: 10px;
+  right: 44px; /* leave space for close 'x' */
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(180deg, #4caf50, #388e3c);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1010;
+}
+.photo-plus:hover { transform: scale(1.05); }
+
+/* Employee photo inside popup */
+.emp-photo {
+  width: 90px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  display: block;
+}
+
+.emp-photo-placeholder {
+  width: 90px;
+  height: 90px;
+  border-radius: 8px;
+  border: 1px dashed #bbb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  background: #fafafa;
+  font-size: 34px;
+}
+
 /* =============================
    Print Style Overrides
 ============================= */
