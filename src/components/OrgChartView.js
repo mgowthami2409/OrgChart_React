@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import OrgChart from "@balkangraph/orgchart.js";
 import Controls from "./Controls";
 import "./OrgChartView.css";
 import html2canvas from 'html2canvas';
